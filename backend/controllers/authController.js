@@ -1,147 +1,105 @@
-const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const pool = require('../config/db');
 
-// Validation regex definitions
-const ID_REGEX = /^[A-Za-z]{2}\d{5}$/;
-const GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-const PASS_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+// ─── Helpers ────────────────────────────────────────────────
+const signToken = (payload) =>
+  jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  });
 
+const safeUser = (row) => ({
+  id:    row.id,
+  name:  row.name,
+  email: row.email,
+  role:  row.role,
+});
+
+// ─── POST /api/auth/register ────────────────────────────────
 exports.register = async (req, res) => {
-  const { id, name, email, password, role } = req.body;
-
-  // Validate Employee ID
-  if (!id || !ID_REGEX.test(id)) {
-    return res.status(400).json({ error: 'Wrong Employee ID format' });
-  }
-
-  // Validate Full Name
-  if (!name || name.trim() === '') {
-    return res.status(400).json({ error: 'Full name is required' });
-  }
-
-  // Validate Gmail
-  if (!email || !GMAIL_REGEX.test(email)) {
-    return res.status(400).json({ error: 'Must be a valid Gmail ID (e.g. user@gmail.com)' });
-  }
-
-  // Validate Password
-  if (!password || !PASS_REGEX.test(password)) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters and include uppercase, lowercase, number, and special character' });
-  }
-
-  const dbRole = role === 'admin' ? 'admin' : 'employee';
-
-  let connection;
   try {
-    connection = await pool.getConnection();
+    const { name, email, password, role = 'employee' } = req.body;
 
-    // Check if ID or Email already exists
-    const [existingUsers] = await connection.query(
-      'SELECT id, email FROM users WHERE id = ? OR email = ?',
-      [id, email]
-    );
+    if (!name || !email || !password)
+      return res.status(400).json({ error: 'name, email and password are required' });
 
-    if (existingUsers.length > 0) {
-      const existsId = existingUsers.some(u => u.id === id);
-      if (existsId) {
-        return res.status(400).json({ error: 'Employee ID already exists' });
-      }
-      return res.status(400).json({ error: 'Email address already registered' });
-    }
+    // Check duplicate
+    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length > 0)
+      return res.status(409).json({ error: 'An account with this email already exists' });
 
-    // Hash the password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Default corporate values
-    const department = dbRole === 'admin' ? 'Management' : 'Engineering';
-    const jobTitle = dbRole === 'admin' ? 'Chief Technology Officer' : 'Software Engineer';
-    const joinDate = new Date().toISOString().split('T')[0];
-    const supervisor = dbRole === 'admin' ? 'CEO' : 'Sarah Connor (CTO)';
-    const basicSalary = dbRole === 'admin' ? 8500 : 3500;
-    const allowances = dbRole === 'admin' ? 800 : 200;
-    const deductions = dbRole === 'admin' ? 1000 : 400;
-
-    await connection.beginTransaction();
+    const password_hash = await bcrypt.hash(password, 12);
 
     // Insert user
-    await connection.query(
-      'INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
-      [id, name, email, hashedPassword, dbRole]
+    const [userResult] = await pool.query(
+      'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+      [name, email, password_hash, role]
+    );
+    const userId = userResult.insertId;
+
+    // Create linked employee profile
+    await pool.query(
+      'INSERT INTO employees (user_id) VALUES (?)',
+      [userId]
     );
 
-    // Insert employee profile
-    await connection.query(
-      'INSERT INTO employees (id, name, email, role, department, jobTitle, joinDate, supervisor, phone, address, basicSalary, allowances, deductions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, name, email, dbRole, department, jobTitle, joinDate, supervisor, '+1 (555) 000-0000', 'Enter address...', basicSalary, allowances, deductions]
-    );
+    const newUser = { id: userId, name, email, role };
+    const token = signToken({ id: userId, role });
 
-    await connection.commit();
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { id, name, email, role: dbRole },
-      process.env.JWT_SECRET || 'your_jwt_secret_key_here',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      token,
-      user: { id, name, email, role: dbRole }
-    });
-
+    return res.status(201).json({ token, user: newUser });
   } catch (error) {
-    if (connection) await connection.rollback();
-    console.error('Registration Error:', error);
-    res.status(500).json({ error: 'Database transaction failed: ' + error.message });
-  } finally {
-    if (connection) connection.release();
+    console.error('register error:', error);
+    return res.status(500).json({ error: error.message });
   }
 };
 
+// ─── POST /api/auth/login ───────────────────────────────────
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-
   try {
-    // Fetch user from DB
-    const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'Invalid email or password' });
-    }
+    const { email, password } = req.body;
 
-    const user = rows[0];
+    if (!email || !password)
+      return res.status(400).json({ error: 'email and password are required' });
 
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid email or password' });
-    }
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, name: user.name, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'your_jwt_secret_key_here',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    // Fetch user row
+    const [rows] = await pool.query(
+      'SELECT u.*, e.id AS emp_id FROM users u LEFT JOIN employees e ON e.user_id = u.id WHERE u.email = ?',
+      [email]
     );
+    if (rows.length === 0)
+      return res.status(401).json({ error: 'Invalid email or password' });
 
-    res.status(200).json({
-      message: 'Login successful',
-      token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role }
-    });
+    const dbUser = rows[0];
+    const match = await bcrypt.compare(password, dbUser.password_hash);
+    if (!match)
+      return res.status(401).json({ error: 'Invalid email or password' });
 
+    const token = signToken({ id: dbUser.id, role: dbUser.role });
+    const user = {
+      id:    dbUser.id,
+      empId: dbUser.emp_id,
+      name:  dbUser.name,
+      email: dbUser.email,
+      role:  dbUser.role,
+    };
+
+    return res.status(200).json({ token, user });
   } catch (error) {
-    console.error('Login Error:', error);
-    res.status(500).json({ error: 'Internal server error: ' + error.message });
+    console.error('login error:', error);
+    return res.status(500).json({ error: error.message });
   }
 };
 
+// ─── GET /api/auth/verify-email ─────────────────────────────
 exports.verifyEmail = async (req, res) => {
-  res.status(200).json({ message: 'Email verified successfully (mock verification)' });
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'Token is required' });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    await pool.query('UPDATE users SET email_verified = 1 WHERE id = ?', [decoded.id]);
+    return res.status(200).json({ message: 'Email verified successfully' });
+  } catch (error) {
+    return res.status(400).json({ error: 'Invalid or expired token' });
+  }
 };

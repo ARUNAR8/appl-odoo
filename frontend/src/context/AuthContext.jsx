@@ -191,14 +191,18 @@ export function AuthProvider({ children }) {
   // Switched employee context helpers (Admin switches profile tabs view context)
   const getActiveEmployeeContextId = () => {
     if (user && user.role === 'admin' && selectedEmployeeId) {
+      // selectedEmployeeId is the employees table id (set from dropdown)
       return selectedEmployeeId;
     }
-    return user ? user.id : '';
+    // For employees, user.empId is the employees table id returned by login
+    // For admin without a selected employee, fall back to their own empId
+    return user ? (user.empId || user.id) : '';
   };
 
   const getActiveEmployee = () => {
     const activeId = getActiveEmployeeContextId();
-    return employees.find(e => e.id === activeId) || null;
+    // Compare as same type — DB ids are numbers, selectedEmployeeId may be string from select
+    return employees.find(e => String(e.id) === String(activeId)) || null;
   };
 
   // Expose relational table data in local format to match page views

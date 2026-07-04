@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import Button from '../../components/common/Button';
@@ -13,6 +13,18 @@ export default function Login() {
   const [password, setPassword] = useState('employee123'); // Autofilled for easy testing
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+
+  // Dark/Light Theme mode state
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,8 +63,37 @@ export default function Login() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <div className="auth-header">
-          <img src={logo} alt="HRMS Logo" className="auth-logo" />
+        <div className="auth-header" style={{ position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 0, right: 0 }}>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.5rem',
+                borderRadius: '50%',
+                transition: 'background var(--transition-fast)'
+              }}
+              aria-label="Toggle Theme"
+            >
+              {theme === 'light' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" width="20" height="20">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" width="20" height="20">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m0 13.5V21m8.975-8.975h-2.25M4.275 12h-2.25m17.067-7.067l-1.591 1.591M6.82 17.18l-1.591 1.591m12.937 0l-1.591-1.591M6.82 6.82L5.229 5.229M12 8.25a3.75 3.75 0 100 7.5 3.75 3.75 0 000-7.5z" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <img src={logo} alt="APPL MANAGE Logo" className="auth-logo" />
           <h2 className="auth-title">Welcome Back</h2>
           <p className="auth-subtitle">Sign in to your HR portal account</p>
         </div>
@@ -97,7 +138,7 @@ export default function Login() {
           </Button>
         </form>
 
-        <div style={{ marginTop: '1.25rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)' }}>
+        <div style={{ marginTop: '1.25rem', padding: '0.75rem', background: 'rgba(0, 0, 0, 0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Quick Test Login:</span>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
             <Button size="sm" variant="outline" onClick={() => setTestCredentials('employee')}>Employee</Button>

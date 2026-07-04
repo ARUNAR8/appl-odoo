@@ -1,111 +1,113 @@
 const pool = require('../config/db');
 
-exports.getProfile = async (req, res) => {
-  const { empId } = req.query;
-  const targetId = empId || req.user.id;
+// ─── Shared row mapper ───────────────────────────────────────
+const mapEmployee = (row) => ({
+  id:           row.id,
+  userId:       row.user_id,
+  name:         row.name,
+  email:        row.email,
+  role:         row.role,
+  department:   row.department,
+  jobTitle:     row.title,        // frontend uses emp.jobTitle
+  title:        row.title,        // kept for compatibility
+  phone:        row.phone,
+  address:      row.address,
+  supervisor:   row.supervisor,
+  joinDate:     row.join_date,
+  basicSalary:  parseFloat(row.basic_salary),
+  allowances:   parseFloat(row.allowances),
+  deductions:   parseFloat(row.deductions),
+  avatarUrl:    row.avatar_url,
+});
 
-  try {
-    const [rows] = await pool.query('SELECT * FROM employees WHERE id = ?', [targetId]);
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'Employee profile not found' });
-    }
-    res.status(200).json(rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
+// ─── GET /api/employees  (admin only) ────────────────────────
 exports.getAllEmployees = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM employees');
-    res.status(200).json(rows);
+    const [rows] = await pool.query(`
+      SELECT e.*, u.name, u.email, u.role
+      FROM employees e
+      JOIN users u ON u.id = e.user_id
+      ORDER BY e.id ASC
+    `);
+    return res.status(200).json(rows.map(mapEmployee));
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('getAllEmployees error:', error);
+    return res.status(500).json({ error: error.message });
   }
 };
 
+// ─── GET /api/employees/profile  (own profile, from JWT) ─────
+exports.getProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await pool.query(`
+      SELECT e.*, u.name, u.email, u.role
+      FROM employees e
+      JOIN users u ON u.id = e.user_id
+      WHERE e.user_id = ?
+    `, [userId]);
+
+    if (rows.length === 0)
+      return res.status(404).json({ error: 'Employee profile not found' });
+
+    return res.status(200).json(mapEmployee(rows[0]));
+  } catch (error) {
+    console.error('getProfile error:', error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+// ─── PUT /api/employees/profile/:id ──────────────────────────
 exports.updateProfile = async (req, res) => {
-  const { id } = req.params;
-  const { name, phone, address, department, jobTitle, supervisor } = req.body;
-
-  // Security check: only Admin or the employee themselves can edit
-  if (req.user.role !== 'admin' && req.user.id !== id) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  let connection;
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
+    const empId = parseInt(req.params.id, 10);
+    const { name, department, title, phone, address, supervisor } = req.body;
 
-    // Update employees profile
-    const updateFields = [];
-    const values = [];
+    // Update employee table fields
+    await pool.query(`
+      UPDATE employees
+      SET department = COALESCE(?, department),
+          title      = COALESCE(?, title),
+          phone      = COALESCE(?, phone),
+          address    = COALESCE(?, address),
+          supervisor = COALESCE(?, supervisor)
+      WHERE id = ?
+    `, [department, title, phone, address, supervisor, empId]);
 
-    if (name !== undefined) {
-      updateFields.push('name = ?');
-      values.push(name);
-    }
-    if (phone !== undefined) {
-      updateFields.push('phone = ?');
-      values.push(phone);
-    }
-    if (address !== undefined) {
-      updateFields.push('address = ?');
-      values.push(address);
-    }
-    if (department !== undefined && req.user.role === 'admin') {
-      updateFields.push('department = ?');
-      values.push(department);
-    }
-    if (jobTitle !== undefined && req.user.role === 'admin') {
-      updateFields.push('jobTitle = ?');
-      values.push(jobTitle);
-    }
-    if (supervisor !== undefined && req.user.role === 'admin') {
-      updateFields.push('supervisor = ?');
-      values.push(supervisor);
+    // Update name on users table if supplied
+    if (name) {
+      await pool.query(`
+        UPDATE users u
+        JOIN employees e ON e.user_id = u.id
+        SET u.name = ?
+        WHERE e.id = ?
+      `, [name, empId]);
     }
 
-    if (updateFields.length > 0) {
-      values.push(id);
-      await connection.query(
-        `UPDATE employees SET ${updateFields.join(', ')} WHERE id = ?`,
-        values
-      );
-    }
-
-    // Sync user table name if name was updated
-    if (name !== undefined) {
-      await connection.query('UPDATE users SET name = ? WHERE id = ?', [name, id]);
-    }
-
-    await connection.commit();
-    res.status(200).json({ message: 'Profile updated successfully' });
-
+    return res.status(200).json({ message: 'Profile updated successfully' });
   } catch (error) {
-    if (connection) await connection.rollback();
-    res.status(500).json({ error: error.message });
-  } finally {
-    if (connection) connection.release();
+    console.error('updateProfile error:', error);
+    return res.status(500).json({ error: error.message });
   }
 };
 
+// ─── PUT /api/employees/salary/:id  (admin only) ─────────────
 exports.updateSalary = async (req, res) => {
-  const { id } = req.params;
-  const { basicSalary, allowances, deductions } = req.body;
-
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
   try {
-    await pool.query(
-      'UPDATE employees SET basicSalary = ?, allowances = ?, deductions = ? WHERE id = ?',
-      [basicSalary, allowances, deductions, id]
-    );
-    res.status(200).json({ message: 'Salary structure updated successfully' });
+    const empId = parseInt(req.params.id, 10);
+    const { basicSalary, allowances, deductions } = req.body;
+
+    await pool.query(`
+      UPDATE employees
+      SET basic_salary = COALESCE(?, basic_salary),
+          allowances   = COALESCE(?, allowances),
+          deductions   = COALESCE(?, deductions)
+      WHERE id = ?
+    `, [basicSalary, allowances, deductions, empId]);
+
+    return res.status(200).json({ message: 'Salary structure updated' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('updateSalary error:', error);
+    return res.status(500).json({ error: error.message });
   }
 };

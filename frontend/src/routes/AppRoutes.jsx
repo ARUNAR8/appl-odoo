@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import PrivateRoute from './PrivateRoute';
@@ -30,6 +30,18 @@ function DashboardLayout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Dark/Light Theme mode state
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   // If loading or no user, skip layout
   if (!user) return children;
@@ -170,6 +182,8 @@ function DashboardLayout({ children }) {
           notificationsCount={user.role === 'admin' ? 3 : 1}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           onNotificationsClick={() => alert('Notifications: All systems operational.')}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
         <main style={{ minHeight: 'calc(100vh - 64px)' }}>
           {children}

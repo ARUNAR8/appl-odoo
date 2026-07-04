@@ -2,18 +2,17 @@ const express = require('express');
 const router = express.Router();
 const employeeController = require('../controllers/employeeController');
 const authMiddleware = require('../middleware/authMiddleware');
-const adminMiddleware = require('../middleware/adminMiddleware');
 
-// Get all employees (Admin only)
-router.get('/', authMiddleware, adminMiddleware, employeeController.getAllEmployees);
+// Admin: get all employees
+router.get('/', authMiddleware, employeeController.getAllEmployees);
 
-// Get specific profile
+// Employee: get own profile
 router.get('/profile', authMiddleware, employeeController.getProfile);
 
-// Update profile details
+// Update contact/profile fields for an employee
 router.put('/profile/:id', authMiddleware, employeeController.updateProfile);
 
-// Update salary details (Admin only)
-router.put('/salary/:id', authMiddleware, adminMiddleware, employeeController.updateSalary);
+// Admin: update salary structure for an employee
+router.put('/salary/:id', authMiddleware, employeeController.updateSalary);
 
 module.exports = router;
