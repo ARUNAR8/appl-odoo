@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../../context/AuthContext';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import logo from '../../assets/logo/logo.png';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState('employee@company.com'); // Autofilled for easy testing
+  const [password, setPassword] = useState('employee123'); // Autofilled for easy testing
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
     if (!email) newErrors.email = 'Email address is required';
@@ -22,11 +27,25 @@ export default function Login() {
 
     setErrors({});
     setIsLoading(true);
-    // Simulate login request
-    setTimeout(() => {
+
+    try {
+      await login(email, password);
       setIsLoading(false);
-      alert('Logged in successfully! (Static demo)');
-    }, 1500);
+      navigate('/');
+    } catch (error) {
+      setIsLoading(false);
+      setErrors({ form: error.message });
+    }
+  };
+
+  const setTestCredentials = (role) => {
+    if (role === 'admin') {
+      setEmail('admin@company.com');
+      setPassword('admin123');
+    } else {
+      setEmail('employee@company.com');
+      setPassword('employee123');
+    }
   };
 
   return (
@@ -37,6 +56,12 @@ export default function Login() {
           <h2 className="auth-title">Welcome Back</h2>
           <p className="auth-subtitle">Sign in to your HR portal account</p>
         </div>
+
+        {errors.form && (
+          <div style={{ color: 'var(--danger)', marginBottom: '1.25rem', fontSize: '0.9rem', fontWeight: 500 }}>
+            {errors.form}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <Input
@@ -72,9 +97,17 @@ export default function Login() {
           </Button>
         </form>
 
+        <div style={{ marginTop: '1.25rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Quick Test Login:</span>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+            <Button size="sm" variant="outline" onClick={() => setTestCredentials('employee')}>Employee</Button>
+            <Button size="sm" variant="outline" onClick={() => setTestCredentials('admin')}>Admin</Button>
+          </div>
+        </div>
+
         <div className="auth-footer">
           Don't have an account? 
-          <a href="#" className="auth-link">Register here</a>
+          <span className="auth-link" onClick={() => navigate('/register')} style={{ cursor: 'pointer' }}>Register here</span>
         </div>
       </div>
     </div>

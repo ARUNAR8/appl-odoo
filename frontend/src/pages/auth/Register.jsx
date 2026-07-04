@@ -1,22 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../../context/AuthContext';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import logo from '../../assets/logo/logo.png';
 
 export default function Register() {
+  const { register } = useContext(AuthContext);
+  const navigate = useNavigate();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('employee');
+  const [empId, setEmpId] = useState('');
+  const [designation, setDesignation] = useState('Employee'); // 'Employee' or 'HR'
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const validatePassword = (pass) => {
+    // Min 8 characters, at least 1 uppercase, 1 lowercase, 1 number, 1 special character
+    const passRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return passRegex.test(pass);
+  };
+
+  const validateEmail = (mail) => {
+    // Must be a valid email and end with @gmail.com
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+    return emailRegex.test(mail);
+  };
+
+  const validateEmployeeId = (id) => {
+    // Exactly 7 characters: 2 alphabets followed by 5 numbers
+    const idRegex = /^[A-Za-z]{2}\d{5}$/;
+    return idRegex.test(id);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
-    if (!name) newErrors.name = 'Full name is required';
-    if (!email) newErrors.email = 'Email address is required';
-    if (!password) newErrors.password = 'Password is required';
+
+    if (!empId) {
+      newErrors.empId = 'Employee ID is required';
+    } else if (!validateEmployeeId(empId)) {
+      newErrors.empId = 'Wrong Employee ID';
+    }
+
+    if (!name) {
+      newErrors.name = 'Full name is required';
+    }
+
+    if (!email) {
+      newErrors.email = 'Email address is required';
+    } else if (!validateEmail(email)) {
+      newErrors.email = 'Must be a valid Gmail ID (e.g. user@gmail.com)';
+    }
+
+    if (!password) {
+      newErrors.password = 'Password is required';
+    } else if (!validatePassword(password)) {
+      newErrors.password = 'Password must be at least 8 characters and include uppercase, lowercase, number, and special character';
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -25,10 +68,23 @@ export default function Register() {
 
     setErrors({});
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      // Map designation 'HR' -> role 'admin', 'Employee' -> role 'employee'
+      const role = designation === 'HR' ? 'admin' : 'employee';
+      await register({
+        id: empId,
+        name,
+        email,
+        password,
+        role
+      });
       setIsLoading(false);
-      alert('Registered successfully! (Static demo)');
-    }, 1500);
+      navigate('/');
+    } catch (error) {
+      setIsLoading(false);
+      setErrors({ form: error.message });
+    }
   };
 
   return (
@@ -40,7 +96,27 @@ export default function Register() {
           <p className="auth-subtitle">Join your organization's HR ecosystem</p>
         </div>
 
+        {errors.form && (
+          <div style={{ color: 'var(--danger)', marginBottom: '1.25rem', fontSize: '0.9rem', fontWeight: 500 }}>
+            {errors.form}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
+          <Input
+            label="Employee ID (2 Letters + 5 Numbers)"
+            type="text"
+            placeholder="e.g. EM12345"
+            value={empId}
+            onChange={(e) => setEmpId(e.target.value)}
+            error={errors.empId}
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" width="18" height="18">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+              </svg>
+            }
+          />
+
           <Input
             label="Full Name"
             type="text"
@@ -56,9 +132,9 @@ export default function Register() {
           />
 
           <Input
-            label="Email Address"
-            type="email"
-            placeholder="john@company.com"
+            label="Gmail Address"
+            type="text"
+            placeholder="john@gmail.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             error={errors.email}
@@ -72,7 +148,7 @@ export default function Register() {
           <Input
             label="Password"
             type="password"
-            placeholder="Min 6 characters"
+            placeholder="Min 8 chars, A-z, 0-9, @..."
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             error={errors.password}
@@ -84,16 +160,16 @@ export default function Register() {
           />
 
           <div className="input-container">
-            <label className="input-label">Role</label>
+            <label className="input-label">Designation</label>
             <div className="input-wrapper">
               <select
                 className="input-field"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
+                value={designation}
+                onChange={(e) => setDesignation(e.target.value)}
                 style={{ paddingRight: '2rem' }}
               >
-                <option value="employee">Employee</option>
-                <option value="admin">Administrator</option>
+                <option value="Employee">Employee</option>
+                <option value="HR">HR</option>
               </select>
             </div>
           </div>
@@ -105,7 +181,7 @@ export default function Register() {
 
         <div className="auth-footer">
           Already have an account? 
-          <a href="#" className="auth-link">Login here</a>
+          <span className="auth-link" onClick={() => navigate('/login')} style={{ cursor: 'pointer' }}>Login here</span>
         </div>
       </div>
     </div>
