@@ -117,6 +117,14 @@
       "checkIn": "08:45 AM",
       "checkOut": "05:15 PM",
       "status": "Present"
+    },
+    {
+      "id": 7,
+      "empId": "EM00089",
+      "date": "2026-07-04",
+      "checkIn": "11:58 AM",
+      "checkOut": "",
+      "status": "Late"
     }
   ],
   "leaves": [

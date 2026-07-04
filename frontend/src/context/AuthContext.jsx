@@ -1,10 +1,21 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 
 export const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const sessionUser = localStorage.getItem('hrms_user');
+    const sessionToken = localStorage.getItem('hrms_token');
+    if (sessionUser && sessionToken) {
+      try {
+        return JSON.parse(sessionUser);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   
   // App state mirroring database tables
@@ -53,16 +64,15 @@ export function AuthProvider({ children }) {
     }
   }, [user]);
 
-  // Load session from localStorage on start
+  const initialFetchDone = useRef(false);
+
+  // Load initial app data on startup if user is already authenticated
   useEffect(() => {
-    const sessionUser = localStorage.getItem('hrms_user');
-    const sessionToken = localStorage.getItem('hrms_token');
-    if (sessionUser && sessionToken) {
-      const parsedUser = JSON.parse(sessionUser);
-      setUser(parsedUser);
-      fetchAppData(parsedUser);
+    if (user && !initialFetchDone.current) {
+      initialFetchDone.current = true;
+      fetchAppData(user);
     }
-  }, [fetchAppData]);
+  }, [user, fetchAppData]);
 
   // Refresh app data whenever Switched employee ID context changes
   useEffect(() => {
@@ -113,6 +123,7 @@ export function AuthProvider({ children }) {
     setAttendance([]);
     setLeaves([]);
     setPayroll([]);
+    initialFetchDone.current = false;
     localStorage.removeItem('hrms_token');
     localStorage.removeItem('hrms_user');
   };
